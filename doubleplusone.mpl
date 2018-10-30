@@ -4,6 +4,7 @@ macro(Determinant=LinearAlgebra[Determinant]):
 macro(MatrixInverse=LinearAlgebra[MatrixInverse]):
 macro(Multiply=LinearAlgebra[Multiply]):
 macro(Matrix=LinearAlgebra[Matrix]):
+macro(Copy=LinearAlgebra[Copy]):
 macro(mMod=LinearAlgebra[Modular][Mod]):
 macro(mInverse=LinearAlgebra[Modular][Inverse]):
 macro(mCreate=LinearAlgebra[Modular][Create]):
@@ -43,21 +44,51 @@ end proc:
 # Input :
 #		A : Input integer matrix n x m
 #		X : Integer for the X-adic representation
-#		n, m : Dimensions of B
+#		n, m : Dimensions of A
 #		p : Length of the X-adic representation to output
 #
 # Output :
-# 		write here
-# 
-# XadicRepresentationMatrixCreate := proc(A, X, n, m, p)
-# 	A_xadic := 
-# end proc:
+#		A_xadic : Integer matrix n x (m*p) where every vertical slice contains one term from the X-adic representation of A
+#
+XadicRepresentationMatrixCreate := proc(A, X, n, m, p)
+	A_xadic := Matrix(n, m*p):
+	A_temp := Copy(A):
+	for k to p do
+		for i to n do
+			for j to m do
+				A_xadic[i, j + m * (k - 1)] := modp(A_temp[i, j], X):
+				A_temp[i, j] := iquo(A_temp[i, j], X):
+			od:
+		od:
+	od:
+	return A_xadic:
+end proc:
 
 
-# 
-# XadicRepresentationMatrixCollapse := proc(A_xadic, X, n, m, p)
-# 	
-# end_proc:
+# XadicRepresentationMatrixCollapse : Computes the actual matrix from its X-adic representation
+#
+# Input :
+#		A_xadic : Input integer matrix n x (m*p) containing the X-adic representation of A
+#		X : Integer for the X-adic representation
+#		n, m : Dimensions of A to output
+#		p : Length of the input X-adic representation
+#
+# Output :
+#		A : Integer matrix n x m collapsed from its X-adic representation
+#
+XadicRepresentationMatrixCollapse := proc(A_xadic, X, n, m, p)
+	A := Matrix(n, m):
+	for i to n do
+		for j to m do
+			sum := 0:
+			for k to p do
+				sum := sum + A_xadic[i, j + m * (k-1)] * X^(k-1)
+			od:
+			A[i, j] := sum:
+		od:
+	od:
+	return A:
+end_proc:
 
 
 # change name
@@ -72,12 +103,19 @@ ApplyDPOL := proc(B_0, R, M, X, B, i)
 end proc:
 
 
+
 SolveLinearSystem := proc(A, B, n, m)
+
 	xx := 31:
 	k := 100:
 	X := [seq(xx^(2^(i+1)-1), i=0..k)]:
+
 	B_0, R, M := DoublePlusOneLift(A, xx, n, k):
+
 	B_xadic := XadicRepresentationMatrixCreate(B, X, n, m, p):
+
 	Solution_xadic := ApplyDPOL(B_0, R, M, X, B_xadic, k):
+
 	return XadicRepresentationMatrixCollapse(Solution_xadic, m, p):
+
 end proc:
