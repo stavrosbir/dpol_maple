@@ -91,12 +91,24 @@ XadicRepresentationMatrixCollapse := proc(A_xadic, X, n, m, p)
 end_proc:
 
 
+# SwiftRightXadic : Multiplies an X-adic representation by X^swift, i.e., 
+#	slides the vertical slices of the matrix swift times at the right
+#
+# Input :
+#		A : Input integer matrix n x (m*p) containing an X-adic representation
+#		X : Integer for the X-adic representation
+#		n, m : Dimensions of each slice in A
+#		p : Length of the X-adic representation, i.e., number of slices
+#
+# Output :
+#		A : Integer matrix n x (m*p) containing the input X-adic representation multiplied by X^swift
 #
 SwiftRightXadic := proc(A, swift, n, m, p)
-	for k from p by -1 to swift + 1 do
+	for k from p by -1 to 1 do
 		for i to n do
 			for j to m do
-				A[i, j + m * (k - 1)] := A[i, j + m * (k - 1 - swift)]
+				# Slide, and set to 0 the first swift slices
+				A[i, j + m * (k - 1)] := `if`(k > swift, A[i, j + m * (k - 1 - swift)], 0):
 			od:
 		od:
 	od:
@@ -104,9 +116,20 @@ SwiftRightXadic := proc(A, swift, n, m, p)
 end proc:
 
 
+# CleanUpXadic : Cleans up an X-adic representation, i.e., 
+#	scans the matrix, looking for overflowed elements which will reduce mod X, and it will forward the carry to the next slice
+#
+# Input :
+#		A : Input integer matrix n x (m*p) containing an X-adic representation to be cleaned up
+#		X : Integer for the X-adic representation
+#		n, m : Dimensions of each slice in A
+#		p : Length of the X-adic representation, i.e., number of slices
+#
+# Output :
+#		A : Integer matrix n x (m*p) containing the input X-adic representation that has been cleaned up
 #
 CleanUpXadic := proc(A, X, n, m, p)
-	for k to p do
+	for k to p-1 do
 		for i to n do
 			for j to m do
 				entry := A[i, j + m * (k - 1)]:
@@ -117,26 +140,40 @@ CleanUpXadic := proc(A, X, n, m, p)
 			od:
 		od:
 	od:
+	# Take care of the last slice as well
+	for i to n do
+		for j to m do
+			A[i, j + m * (p - 1)] := modp(A[i, j + m * (p - 1)], X):
+		od:
+	od:
 	return A
 end proc:
 
 
 #
-ApplyDPOL := proc(A_0, R, M, B, X, n, m, n, p, i)
-	if i < 0 then
-		return A_0 . B:
-	else
-		return CleanUpXadic(Multiply(M[i], SwiftRight(B, 2)) + 
-			ApplyDPOL(A_0, R, M, CleanUpXadic(B + Multiply(R[i], SwiftRight(B, 1)), X, n, m, p), X, n, m, p, i - 1), X, n, m, p):
-	fi:
+ApplyDPOL := proc(A_0, R, M, B, X, n, m, p, k)
+	Expansion := Matrix(n, m*p):
+	Factor := B:
+	for i from k-1 by -1 to 0 do # k or k-1? See DPOL algorithm
+		Expansion := CleanUpXadic(Expansion + Multiply(M[i], SwiftRight(Factor, 2))):
+		Factor := CleanUpXadic(Factor + Multiply(R[i], SwiftRight(Factor, 1))):
+	Expansion := CleanUpXadic(Expansion + Multiply(A_0, Factor)):
+	return Expansion:
+#	if k < 0 then
+#		return A_0 . B:
+#	else
+#		return CleanUpXadic(Multiply(M[k], SwiftRight(B, 2)) + 
+#			ApplyDPOL(A_0, R, M, CleanUpXadic(B + Multiply(R[k], SwiftRight(B, 1)), X, n, m, p), X, n, m, p, k - 1), X, n, m, p):
+#	fi:
 end proc:
 
 
 
-SolveLinearSystem := proc(A, B, n, m, p)
+SolveLinearSystem := proc(A, B, n, m)
 
 	xx := 31:
 	k := 100:
+	p := 2^k:
 	X := [seq(xx^(2^(i+1)-1), i=0..k)]:
 
 	A_0, R, M := DoublePlusOneLift(A, xx, n, k):
