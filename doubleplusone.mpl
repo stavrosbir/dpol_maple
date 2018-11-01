@@ -1,14 +1,7 @@
-macro(RandomMatrix=LinearAlgebra[RandomMatrix]):
-macro(HermiteForm=LinearAlgebra[HermiteForm]):
-macro(Determinant=LinearAlgebra[Determinant]):
-macro(MatrixInverse=LinearAlgebra[MatrixInverse]):
 macro(Multiply=LinearAlgebra[Multiply]):
 macro(Matrix=LinearAlgebra[Matrix]):
 macro(Copy=LinearAlgebra[Copy]):
-macro(mMod=LinearAlgebra[Modular][Mod]):
 macro(mInverse=LinearAlgebra[Modular][Inverse]):
-macro(mCreate=LinearAlgebra[Modular][Create]):
-macro(mMultiply=LinearAlgebra[Modular][Multiply]):
 
 
 
@@ -28,7 +21,7 @@ macro(mMultiply=LinearAlgebra[Modular][Multiply]):
 # All together it will be : (...(A_0(I + R_0 * X_0) + M_0 * X_0^2) * (I + R_1 * X_1) + M_1 * X_1^2)...) = A^(-1) mod X^(2^(k+1)-1
 #
 DoublePlusOneLift := proc(A, X, n, k)
-	A_0 := Inverse(X, A):
+	A_0 := mInverse(X, A):
 	R[0] := map(iquo, 1 - A . A_0, X):
 	for i from 0 to (k - 1) do
 		R_bar := Multiply(R[i], R[i]):
@@ -150,6 +143,19 @@ CleanUpXadic := proc(A, X, n, m, p)
 end proc:
 
 
+# ApplyDPOL : Applies the Double Plus One Lifting formula to a matrix B
+#
+# Input :
+#		A_0, R, M : The output from the DoublePlusOneLift procedure, i.e., matrices that form the expansion of the inverse of a matrix A
+#		B : Integer matrix n x (m*p) containing an X-adic representation on which the Double Plus One Lifting formula will be applied
+#		X : Integer for the X-adic representation
+#		n: Dimension of A_0, R[i], M[i], and the number of rows in B
+#		m : Number of collumns of each slice in B
+#		p : Length of the X-adic representation in B, i.e., number of slices
+#		k : Length of the lists R and M
+#
+# Output :
+#		Expansion : Integer matrix n x (m*p) containg the X-adic representation of A^(-1) * B, where A is represented by its sparse inverese expansion here
 #
 ApplyDPOL := proc(A_0, R, M, B, X, n, m, p, k)
 	Expansion := Matrix(n, m*p):
