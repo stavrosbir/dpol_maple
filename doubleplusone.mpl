@@ -1,5 +1,4 @@
 macro(Multiply=LinearAlgebra[Multiply]):
-macro(Matrix=LinearAlgebra[Matrix]):
 macro(Copy=LinearAlgebra[Copy]):
 macro(mInverse=LinearAlgebra[Modular][Inverse]):
 
@@ -9,9 +8,11 @@ macro(mInverse=LinearAlgebra[Modular][Inverse]):
 #
 # Input :
 #		A : Integer matrix n x n
-#		X : Integer which must be relatively prime with the determinant of A
+#		X : Integer which must be relatively prime with the determinant of A and >= max(10000, 3.61 * n^2 * ||A||)
 #		n : Dimension of A
 #		k : Determines the number of the times to lift and the precision of the inverse, i.e. X^(2^(k+1)-1)
+#
+# Precondition : gcd(X, det(A)) = 1 and X >= max(10000, 3.61 * n^2 * ||A||)
 #
 # Output:
 #		A_0 : It is the inverse of A modulo X (Initialisation of the inverse)
@@ -22,13 +23,13 @@ macro(mInverse=LinearAlgebra[Modular][Inverse]):
 #
 DoublePlusOneLift := proc(A, X, n, k)
 	A_0 := mInverse(X, A):
-	R[0] := map(iquo, 1 - A . A_0, X):
+	R[0] := map(iquo, 1 - Multiply(A, A_0), X):
 	for i from 0 to (k - 1) do
 		R_bar := Multiply(R[i], R[i]):
-		M[i] := map(modp, A_0 . R_bar, X):
-		R[i+1] := (1 / X) * (R_bar - Multiply(A, M[i]):
+		M[i] := map(modp , Multiply(A_0, R_bar), X):
+		R[i+1] := map(iquo, R_bar - Multiply(A, M[i]), X):
 	od:
-	return A_0, R, M:
+	return A_0, eval(R), eval(M):
 end proc:
 
 
@@ -45,12 +46,11 @@ end proc:
 #
 XadicRepresentationMatrixCreate := proc(A, X, n, m, p)
 	A_xadic := Matrix(n, m*p):
-	A_temp := Copy(A):
-	for k to p do
-		for i to n do
-			for j to m do
-				A_xadic[i, j + m * (k - 1)] := modp(A_temp[i, j], X):
-				A_temp[i, j] := iquo(A_temp[i, j], X):
+	for i to n do
+		for j to m do
+			temp := convert(A[i, j], 'base', X):
+			for k to min(p, nops(temp)) do
+				A_xadic[i, j + m * (k - 1)] := temp[k]:
 			od:
 		od:
 	od:
@@ -81,7 +81,7 @@ XadicRepresentationMatrixCollapse := proc(A_xadic, X, n, m, p)
 		od:
 	od:
 	return A:
-end_proc:
+end proc:
 
 
 # SwiftRightXadic : Multiplies an X-adic representation by X^swift, i.e., 
@@ -89,23 +89,41 @@ end_proc:
 #
 # Input :
 #		A : Input integer matrix n x (m*p) containing an X-adic representation
-#		X : Integer for the X-adic representation
+#		swift : Exponent of X, i.e., A will be multiplied by X^swift
 #		n, m : Dimensions of each slice in A
 #		p : Length of the X-adic representation, i.e., number of slices
 #
 # Output :
-#		A : Integer matrix n x (m*p) containing the input X-adic representation multiplied by X^swift
+#		A_slided : Integer matrix n x (m*p) containing the input X-adic representation multiplied by X^swift
 #
 SwiftRightXadic := proc(A, swift, n, m, p)
-	for k from p by -1 to 1 do
-		for i to n do
-			for j to m do
-				# Slide, and set to 0 the first swift slices
-				A[i, j + m * (k - 1)] := `if`(k > swift, A[i, j + m * (k - 1 - swift)], 0):
-			od:
-		od:
-	od:
-	return A:
+	A_slided := Matrix(n, m*p):
+	if swift < p then
+		A_slided[1..n, swift*m+1..m*p] := A[1..n, 1..m*(p-swift)]:
+	fi:
+	return A_slided:
+end proc:
+
+
+# SwiftRightAndMultiply : Computes the product of 2 matrices A, B, multiplied by X^swift
+#
+# Input :
+#		A : Integer matrix n x n
+#		B : Integer matrix n x (m*p) containing an X-adic representation
+#		swift : Exponent of X, i.e., A*B will be multiplied by X^swift
+#		n: Dimension of A, and the number of rows in B
+#		m : Number of collumns of each slice in B
+#		p : Length of the X-adic representation in B, i.e., number of slices
+#
+# Output :
+#		C : Integer matrix n x (m*p) containing the X-adic representation of A * B * X^swift
+#
+SwiftRightAndMultiply := proc(A, B, swift, n, m, p)
+	C := Matrix(n, m*p):
+	if swift < p then
+		C[1..n, swift*m+1..m*p] := Multiply(A, B[1..n, 1..m*(p-swift)]):
+	fi:
+	return C:
 end proc:
 
 
@@ -123,6 +141,8 @@ end proc:
 #
 CleanUpXadic := proc(A, X, n, m, p)
 	for k to p-1 do
+#		A[1..n, 1+m*k..m*(k+1)] := A[1..n, 1+m*k..m*(k+1)] + map(iquo, A[1..n, 1+m*(k-1)..m*k], X):
+#		A[1..n, 1+m*(k-1)..m*k] := map(modp, A[1..n, 1+m*(k-1)..m*k], X):
 		for i to n do
 			for j to m do
 				entry := A[i, j + m * (k - 1)]:
@@ -134,12 +154,13 @@ CleanUpXadic := proc(A, X, n, m, p)
 		od:
 	od:
 	# Take care of the last slice as well
+#	A[1..n, 1+m*(p-1)..m*p] := map(modp, A[1..n, 1+m*(p-1)..m*p], X):
 	for i to n do
 		for j to m do
 			A[i, j + m * (p - 1)] := modp(A[i, j + m * (p - 1)], X):
 		od:
 	od:
-	return A
+	return A:
 end proc:
 
 
@@ -154,40 +175,49 @@ end proc:
 #		p : Length of the X-adic representation in B, i.e., number of slices
 #		k : Length of the lists R and M
 #
+# Precondition : p <= 2^(k+1) - 1
+#
 # Output :
 #		Expansion : Integer matrix n x (m*p) containg the X-adic representation of A^(-1) * B, where A is represented by its sparse inverese expansion here
 #
 ApplyDPOL := proc(A_0, R, M, B, X, n, m, p, k)
 	Expansion := Matrix(n, m*p):
-	Factor := B:
-	for i from k-1 by -1 to 0 do # k or k-1? See DPOL algorithm
-		Expansion := CleanUpXadic(Expansion + Multiply(M[i], SwiftRight(Factor, 2))):
-		Factor := CleanUpXadic(Factor + Multiply(R[i], SwiftRight(Factor, 1))):
-	Expansion := CleanUpXadic(Expansion + Multiply(A_0, Factor)):
+	Factor := Copy(B):
+	for i from k-1 by -1 to 0 do
+		Expansion := CleanUpXadic(Expansion + SwiftRightAndMultiply(M[i], Factor, 2^(i + 2) - 2, n, m, p), X, n, m, p):
+		Factor := CleanUpXadic(Factor + SwiftRightAndMultiply(R[i], Factor, 2^(i + 1) - 1, n, m, p), X, n, m, p):
+	od:
+	Expansion := CleanUpXadic(Expansion + Multiply(A_0, Factor), X, n, m, p):
 	return Expansion:
-#	if k < 0 then
-#		return A_0 . B:
-#	else
-#		return CleanUpXadic(Multiply(M[k], SwiftRight(B, 2)) + 
-#			ApplyDPOL(A_0, R, M, CleanUpXadic(B + Multiply(R[k], SwiftRight(B, 1)), X, n, m, p), X, n, m, p, k - 1), X, n, m, p):
-#	fi:
 end proc:
 
 
 
+# SolveLinearSystem : Solves a linear system A*x=B <=> x=A^(-1)*B over the integers
+#
+# Input :
+#		A : Integer matrix n x n
+#		B : Integer matrix n x m
+#		n: Dimension of A, and the number of rows in B
+#		m : Number of collumns in B
+#
+# Output :
+#		Solution : Integer matrix n x m containg the solution x of the linear system A*x=B
+#
 SolveLinearSystem := proc(A, B, n, m)
 
-	xx := 31:
-	k := 100:
-	p := 2^k:
-	X := [seq(xx^(2^(i+1)-1), i=0..k)]:
+	X := 10007:
+	k := 5:
+	p := 2^(k+1)-1:
 
-	A_0, R, M := DoublePlusOneLift(A, xx, n, k):
+	A_0, R, M := DoublePlusOneLift(A, X, n, k):
 
 	B_xadic := XadicRepresentationMatrixCreate(B, X, n, m, p):
 
 	Solution_xadic := ApplyDPOL(A_0, R, M, B_xadic, X, n, m, p, k):
 
-	return XadicRepresentationMatrixCollapse(Solution_xadic, m, p):
+	Solution := XadicRepresentationMatrixCollapse(Solution_xadic, X, n, m, p):
+
+	return Solution:
 
 end proc:
